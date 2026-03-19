@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -29,6 +29,10 @@ public class AuthBehaviour : MonoBehaviour
     private UIController UIController;
     [SerializeField]
     private int _TargetUIID = 1;
+    [SerializeField]
+    private float ShowingAuthorizedFrameDuration = 1;
+    [SerializeField]
+    private float GameFrameActivationDelay = 0.1f;
     private bool registerVisible;
     internal bool LoggedIn = false;
     //private AuthorizationServiceManager authorization;
@@ -53,16 +57,16 @@ public class AuthBehaviour : MonoBehaviour
             RegisterButtonText.text = "Register";
         }
     }
-    private async void OnButtonPress()
+    private IEnumerator OnButtonPress() // async does not work.
     {
         if (!registerVisible)
         {
             (bool, string) Result = (true, "Debug");  //await authorization.SignInAsync(MailInputField.text,PasswordInputField.text);
             if (Result.Item1)
             {
-                await ActivateAuthedFrame("Welcome back, "+Result.Item2);
-                LoggedIn = true; 
-                await Task.Delay(100);
+                StartCoroutine(ActivateAuthedFrame("Welcome back, " + Result.Item2));
+                yield return new WaitForSeconds(ShowingAuthorizedFrameDuration+GameFrameActivationDelay);
+                LoggedIn = true;
                 UIController.TargetUIID = _TargetUIID;
             }
         } else
@@ -72,19 +76,19 @@ public class AuthBehaviour : MonoBehaviour
                 bool suceed = true;// await authorization.CreateOrSigninAndWriteAsync(MailInputField.text, PasswordInputField.text, DisplayNameInputField.text);
                 if (suceed)
                 {
-                    await ActivateAuthedFrame("Welcome, "+DisplayNameInputField.text);
-                    LoggedIn = true; 
-                    await Task.Delay(100);
+                    StartCoroutine(ActivateAuthedFrame("Welcome, " + DisplayNameInputField.text));
+                    yield return new WaitForSeconds(ShowingAuthorizedFrameDuration + GameFrameActivationDelay);
+                    LoggedIn = true;
                     UIController.TargetUIID = _TargetUIID;
                 }                
             }
         }
     }
-    private async Task ActivateAuthedFrame(string _text)
+    private IEnumerator ActivateAuthedFrame(string _text)
     {
         AuthorizedFrame.gameObject.SetActive(true);
-        AuthorizedText.text = _text;  
-        await Task.Delay(1000);  
+        AuthorizedText.text = _text;
+        yield return new WaitForSeconds(ShowingAuthorizedFrameDuration);
         AuthorizedFrame.gameObject.SetActive(false);
     }
     private bool IsMailValid(string mail) => !string.IsNullOrEmpty(mail) && mail.Contains('@') && mail.Contains('.') && mail.Length >= 5;
