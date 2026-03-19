@@ -41,7 +41,34 @@ public class AuthBehaviour : MonoBehaviour
         //authorization = AuthorizationServiceManager.Instance;
         ProceedButton.onClick.AddListener(() =>
         {
-            OnButtonPress();
+            //StartCoroutine(OnButtonPress());
+
+            if (!registerVisible)
+            {
+                (bool, string) Result = (true, "Debug");  //await authorization.SignInAsync(MailInputField.text,PasswordInputField.text);
+                if (Result.Item1)
+                {
+                    //StartCoroutine(ActivateAuthedFrame("Welcome back, " + Result.Item2));
+                    //yield return new WaitForSeconds(ShowingAuthorizedFrameDuration+GameFrameActivationDelay);
+                    LoggedIn = true;
+                    UIController.TargetUIID = _TargetUIID;
+                }
+            }
+            else
+            {
+                if (IsMailValid(MailInputField.text) && IsPassValid(PasswordInputField.text))
+                {
+                    bool suceed = true;// await authorization.CreateOrSigninAndWriteAsync(MailInputField.text, PasswordInputField.text, DisplayNameInputField.text);
+                    if (suceed)
+                    {
+                        //StartCoroutine(ActivateAuthedFrame("Welcome, " + DisplayNameInputField.text));
+                        //yield return new WaitForSeconds(ShowingAuthorizedFrameDuration + GameFrameActivationDelay);
+                        LoggedIn = true;
+                        UIController.TargetUIID = _TargetUIID;
+                    }
+
+                }
+            }
         });
         ToggleRegisterButton.onClick.AddListener(OnRegisterPress);
     }
