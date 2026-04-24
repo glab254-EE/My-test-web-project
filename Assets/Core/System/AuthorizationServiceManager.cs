@@ -1,28 +1,26 @@
-/*using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Firebase;
-using Firebase.Auth;
-using Firebase.Database;
-using Firebase.Extensions;
+using System;
+using System.Collections;
+using System.Net.Security;
+using System.Runtime.InteropServices;
+using System.Text;
 using UnityEngine;
+using UnityEngine.Networking;
 
 public class AuthorizationServiceManager : MonoBehaviour
 {
-    private static AuthorizationServiceManager source;
-    public static AuthorizationServiceManager Instance 
+    [field:SerializeField]
+    private string BASE_URL = "http://localhost:7000";
+    static public GameplayData currentData;
+    static public AuthorizationServiceManager source;
+    static public string displayNameRaw {get; private set;}
+    static public TelegramUserData TGUserNameData {get; private set;}
+    static public bool IsLoaded {get; private set;}
+    static private Action OnLoadedActions;
+    static private Action<string> OnErrorActions;
+    static private string TelegramInitData;
+    void Start()
     {
-        get
-        {
-            source ??= new();
-            return source;
-        }
-    }
-
-    private static FirebaseAuth _auth;
-    private static DatabaseReference _dbref;
-    void Awake()
-    {
+        #region singleton
         if (source != null)
         {
             Destroy(gameObject);
@@ -30,151 +28,185 @@ public class AuthorizationServiceManager : MonoBehaviour
         }
         source = this;
         DontDestroyOnLoad(gameObject);
-        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWithOnMainThread(Task =>
-        {
-            var status = Task.Result;
-            if (status != DependencyStatus.Available)
-            {
-                Debug.LogWarning("Database not available.");
-                return;
-            }
-            _auth = FirebaseAuth.DefaultInstance;
-            _dbref = FirebaseDatabase.DefaultInstance.RootReference;
-        });
-    }
-    public async Awaitable<bool> CreateOrSigninAndWriteAsync(string email,string epass, string _displayName)
-    {
-        bool suceed = false;
-        await _auth.CreateUserWithEmailAndPasswordAsync(email,epass).ContinueWithOnMainThread(task =>
-        {
-            if (task.IsCanceled || task.IsFaulted)
-            {
-                Debug.LogWarning("Register failed, potentially already in database.");
+        #endregion
 
-                return;
-            }
-            FirebaseUser user = task.Result.User;
-            UserProfile newprofile = new()
-            {
-                DisplayName = _displayName
-            };
-            user.UpdateUserProfileAsync(newprofile);
-
-            Debug.Log("User created: "+task.Result.User.DisplayName);
-            WriteDownLastLogin(task.Result.User);
-            suceed = true;
-        });
-        return suceed;
-    }
-    public async Awaitable<(bool,string)> SignInAsync(string email, string epass)
-    {
-        bool suceed = false;
-        string outName = "";
-        await _auth.SignInWithEmailAndPasswordAsync(email,epass).ContinueWithOnMainThread(task =>
+        try
         {
-            if (task.IsCanceled || task.IsFaulted)
-            {
-                Debug.LogWarning("Canceled or failed to sign in.");
-                return;
-            }
-            var user = task.Result.User;
-            outName = user.DisplayName;
-            WriteDownLastLogin(user);
-            suceed = true;
-        });
-        return (suceed,outName);
-    }
-    private void WriteDownLastLogin(FirebaseUser user)
-    {
-        var userdata = new Dictionary<string, object>
-        {
-            {"email",user.Email??""},
-            {"lastlogintime", DateTimeOffset.UtcNow.ToUnixTimeSeconds()},
-        };
-
-        _dbref.Child("users").Child(user.UserId).UpdateChildrenAsync(userdata).ContinueWithOnMainThread(task =>
-        {
-            if (task.IsCanceled || task.IsFaulted)
-            {
-                Debug.LogWarning("Failed to write. Canceled or faulted.");
-                return;
-            }
-        });
-    }
-    public void SaveCounterData(GameplayData data)
-    {
-        if (_auth.CurrentUser == null || data == null)
-        {
-            return;
+            StartCoroutine(AuthEnumerator());
+            displayNameRaw = GetUserNameRaw();
         }
-        FirebaseUser user = _auth.CurrentUser;
-        var userdata = new Dictionary<string, object>
+        catch (System.Exception e)
         {
-            {"lastedittime", DateTimeOffset.UtcNow.ToUnixTimeSeconds()},
-            {"counterdata", data.Score},
-        };
-
-        _dbref.Child("users").Child(user.UserId).UpdateChildrenAsync(userdata).ContinueWithOnMainThread(task =>
-        {
-            if (task.IsCanceled || task.IsFaulted)
-            {
-                Debug.LogWarning("Failed to save. Canceled or faulted.");
-                return;
-            }
-
-            Debug.Log("saved!");
-        }); 
-
-        var LeaderboardData = new Dictionary<string, object>
-        {
-            {"score",data.Score},
-            {"name", user.DisplayName},
-        };
-
-        _dbref.Child("leaderboards").Child("global").UpdateChildrenAsync(LeaderboardData).ContinueWithOnMainThread(task =>
-        {
-            if (task.IsCanceled || task.IsFaulted)
-            {
-                Debug.LogWarning("Failed to save to leaderboard. Canceled or faulted.");
-                return;
-            }
-
-            Debug.Log("saved lb!");
-        });
-    }
-    public async Task<GameplayData> LoadGameplayDataAsync()
-    {
-        if (_auth.CurrentUser == null)
-        {
-            await CreateOrSigninAndWriteAsync("test@mail.com", "123456", "System Developer");
-            await SignInAsync("test@mail.com", "123456");
+            OnTelegramError(e.Message);
         }
-        ;
-        GameplayData newData = new();
-        await _dbref.Child("users").Child(_auth.CurrentUser.UserId).GetValueAsync().ContinueWithOnMainThread(task =>
-        {
-            if (task.IsCanceled || task.IsFaulted)
-            {
-                Debug.LogWarning("Failed to read. Canceled or faulted, or I have no glasses.");
-                return;
-            }
-
-            if (!task.Result.Exists)
-            {
-                Debug.LogWarning("Failed to read. No new snapshot of minecraft. :(");
-                return;
-            }
-            float? counterdata = task.Result.Child("counterdata").Value as float?;
-
-            if (counterdata == null)
-            {
-                Debug.LogWarning("Failed to read. No new stocks data. :(");
-                return;                
-            }
-
-            newData.Score = (float)counterdata;
-        });
-        return newData;
     }
+
+    #if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")]
+    private static extern string InitTelegram();
+    [DllImport("__Internal")]
+    private static extern string GetTGUser();
+    [DllImport("__Internal")]
+    private static extern void SetupTelegram();
+    [DllImport("__Internal")]
+    private static extern void ExpandTelegram();
+    #endif
+    public bool TryConnectOnErrorActon(Action<string> action)
+    {
+        try
+        {
+            if (OnErrorActions != null) OnErrorActions += action;
+            OnErrorActions??=action;
+            return true;            
+        }
+        catch (System.Exception e)
+        {
+            OnTelegramError(e.Message);
+            return false;
+        }
+    }
+    public bool TryConnectOnActivationActon(Action action)
+    {
+        try
+        {
+            if (IsLoaded)
+            {
+                action.Invoke();
+            } else
+            {
+                if (OnLoadedActions != null) OnLoadedActions += action;
+                OnLoadedActions??=action;
+            }
+            return true;            
+        }
+        catch (System.Exception e)
+        {
+            OnTelegramError(e.Message);
+            return false;
+        }
+    }
+    public bool TrySave()
+    {
+        if (!IsLoaded || currentData == null)
+        {
+            return false;
+        }
+        //StartCoroutine(SaveScoreEnumerator());
+        return true;
+    }
+    private void OnTelegramError(string error)
+    {
+        Debug.LogWarning(error);
+        OnErrorActions?.Invoke(error);
+    }
+    public string Init()
+    {
+        #if UNITY_WEBGL && !UNITY_EDITOR
+            SetupTelegram();
+            ExpandTelegram();
+            return InitTelegram();
+        #else
+            return "test_init_data";
+        #endif
+    }
+    public string GetUserNameRaw()
+    {
+        #if UNITY_WEBGL && !UNITY_EDITOR
+            return GetTGUser();
+        #else
+            return "{\"id\":123,\"first_name\":\"test\"}";
+        #endif        
+    }
+    IEnumerator AuthEnumerator()
+    {
+        TelegramInitData = Init();
+
+        if (string.IsNullOrEmpty(TelegramInitData))
+        {
+            OnTelegramError("FAILED TO SETUP.");
+            yield break;
+        }
+
+        TelegramAuthRequestData requestData = new()
+        {
+            InitData = TelegramInitData
+        };
+
+        string json = JsonUtility.ToJson(requestData);
+        byte[] BodyRaw = Encoding.UTF8.GetBytes(json);
+
+        using UnityWebRequest reqest = new(BASE_URL, "POST");
+
+        reqest.uploadHandler = new UploadHandlerRaw(BodyRaw);
+        reqest.downloadHandler = new DownloadHandlerBuffer();
+        reqest.SetRequestHeader("Content-Type", "application/json");
+
+        yield return reqest.SendWebRequest();
+
+        bool IsError = reqest.result != UnityWebRequest.Result.Success;
+        if (IsError)
+        {
+            Debug.Log("Auth request error: " + reqest.error);
+            Debug.Log("Response: " + reqest.downloadHandler.text);
+            OnTelegramError("FAILED TO SETUP. ERRORED.");
+            yield break;
+        }
+
+        string responseJson = reqest.downloadHandler.text;
+
+        WebRequestData<GameplayData> response = JsonUtility.FromJson<WebRequestData<GameplayData>>(responseJson);
+
+        if (response == null)
+        {
+            Debug.Log("Auth request error: " + "Response is null.");
+            OnTelegramError("FAILED TO SETUP. RESPONSE NULL.");
+            yield break;
+        }
+
+        if (!response.success || response.body == null)
+        {
+            Debug.Log("Auth request error: " + "Response not successful.");
+            OnTelegramError("FAILED TO SETUP. MESSAGE: " + response.message);
+            yield break;
+        }
+
+        TGUserNameData = new()
+        {
+            first_name = response.body.Pname
+        };
+
+        OnLoadedActions?.Invoke();
+        IsLoaded = true;
+    }
+    /*
+    IEnumerator SaveScoreEnumerator()
+    {
+        string url = $"{BASE_URL}/savescore";
+
+        TelegramSaveScoreRequest requestData = new()
+        {
+            initData = TelegramInitData,
+            score = currentData.score,
+        };
+
+        string json = JsonUtility.ToJson(requestData);
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type","application/json");
+
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                OnTelegramError("Error: "+request.error);
+                yield break;
+            }
+            Debug.Log("Saved!");
+        }
+
+    }*/
 }
-*/

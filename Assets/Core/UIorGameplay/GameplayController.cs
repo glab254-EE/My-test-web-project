@@ -52,14 +52,14 @@ public class GameplayController : MonoBehaviour
     public void OnClick()
     {
         if (!Initialized) return;
-        data.Score += ClickIncrement;
+        data.score += ClickIncrement;
         UpdateLabel();
     }
     private void UpdateLabel()
     {
         if (scoreLabel != null)
         {
-            scoreLabel.text = "Score: "+data.Score.ToString();
+            scoreLabel.text = "Score: "+data.score.ToString();
         }
     }
     private void SaveData()

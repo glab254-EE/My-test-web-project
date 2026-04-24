@@ -5,6 +5,7 @@ using UnityEngine.UI;
 
 public class AuthBehaviour : MonoBehaviour
 {
+    /*
     [SerializeField]
     private TMP_InputField DisplayNameInputField;
     [SerializeField]
@@ -20,11 +21,11 @@ public class AuthBehaviour : MonoBehaviour
     [SerializeField]
     private TMP_Text ProceedButtonText;
     [SerializeField]
+    private GameObject RegistrationFrame;*/
+    [SerializeField]
     private TMP_Text AuthorizedText;
     [SerializeField]
     private Transform AuthorizedFrame;
-    [SerializeField]
-    private GameObject RegistrationFrame;
     [SerializeField]
     private UIController UIController;
     [SerializeField]
@@ -33,45 +34,23 @@ public class AuthBehaviour : MonoBehaviour
     private float ShowingAuthorizedFrameDuration = 1;
     [SerializeField]
     private float GameFrameActivationDelay = 0.1f;
+    [SerializeField]
+    private DelayedConnectionHelper delayedConnectionHelper;
     private bool registerVisible;
     internal bool LoggedIn = false;
     //private AuthorizationServiceManager authorization;
     void Start()
     {
+        #if UNITY_EDITOR
+            OnLoggedIn();
+        #else
+            AuthorizationServiceManager.source.TryConnectOnActivationActon(OnLoggedIn);
+        #endif
         //authorization = AuthorizationServiceManager.Instance;
-        ProceedButton.onClick.AddListener(() =>
-        {
-            //StartCoroutine(OnButtonPress());
-
-            if (!registerVisible)
-            {
-                (bool, string) Result = (true, "Debug");  //await authorization.SignInAsync(MailInputField.text,PasswordInputField.text);
-                if (Result.Item1)
-                {
-                    //StartCoroutine(ActivateAuthedFrame("Welcome back, " + Result.Item2));
-                    //yield return new WaitForSeconds(ShowingAuthorizedFrameDuration+GameFrameActivationDelay);
-                    LoggedIn = true;
-                    UIController.TargetUIID = _TargetUIID;
-                }
-            }
-            else
-            {
-                if (IsMailValid(MailInputField.text) && IsPassValid(PasswordInputField.text))
-                {
-                    bool suceed = true;// await authorization.CreateOrSigninAndWriteAsync(MailInputField.text, PasswordInputField.text, DisplayNameInputField.text);
-                    if (suceed)
-                    {
-                        //StartCoroutine(ActivateAuthedFrame("Welcome, " + DisplayNameInputField.text));
-                        //yield return new WaitForSeconds(ShowingAuthorizedFrameDuration + GameFrameActivationDelay);
-                        LoggedIn = true;
-                        UIController.TargetUIID = _TargetUIID;
-                    }
-
-                }
-            }
-        });
-        ToggleRegisterButton.onClick.AddListener(OnRegisterPress);
+        //ProceedButton.onClick.AddListener(OnButtonPress);
+        //ToggleRegisterButton.onClick.AddListener(OnRegisterPress);
     }
+    /*
     void OnRegisterPress()
     {
         registerVisible = !registerVisible;
@@ -83,18 +62,18 @@ public class AuthBehaviour : MonoBehaviour
         {
             RegisterButtonText.text = "Register";
         }
-    }
-    private IEnumerator OnButtonPress() // async does not work.
+    }*/
+    /*
+    private void OnButtonPress() // async does not work, nor ienumerator
     {
+        bool valid = false;
         if (!registerVisible)
         {
             (bool, string) Result = (true, "Debug");  //await authorization.SignInAsync(MailInputField.text,PasswordInputField.text);
             if (Result.Item1)
             {
-                StartCoroutine(ActivateAuthedFrame("Welcome back, " + Result.Item2));
-                yield return new WaitForSeconds(ShowingAuthorizedFrameDuration+GameFrameActivationDelay);
-                LoggedIn = true;
-                UIController.TargetUIID = _TargetUIID;
+                valid = true;
+                ActivateAuthedFrame("Welcome back, " + Result.Item2);
             }
         } else
         {
@@ -103,21 +82,46 @@ public class AuthBehaviour : MonoBehaviour
                 bool suceed = true;// await authorization.CreateOrSigninAndWriteAsync(MailInputField.text, PasswordInputField.text, DisplayNameInputField.text);
                 if (suceed)
                 {
-                    StartCoroutine(ActivateAuthedFrame("Welcome, " + DisplayNameInputField.text));
-                    yield return new WaitForSeconds(ShowingAuthorizedFrameDuration + GameFrameActivationDelay);
-                    LoggedIn = true;
-                    UIController.TargetUIID = _TargetUIID;
+                    valid = true;
+                    ActivateAuthedFrame("Welcome, " + DisplayNameInputField.text);
+                    valid = true;
                 }                
             }
         }
+        if (valid)
+        {
+            if (delayedConnectionHelper != null)
+            {
+                delayedConnectionHelper.ConnectDelayedAction(OnLoggedInAction,ShowingAuthorizedFrameDuration+GameFrameActivationDelay);
+            }        
+        }
     }
-    private IEnumerator ActivateAuthedFrame(string _text)
+    */
+    private void OnLoggedIn()
+    {
+        string DizName = AuthorizationServiceManager.TGUserNameData != null ? AuthorizationServiceManager.TGUserNameData.first_name : "Unknown";
+        LoggedIn = true;    
+        ActivateAuthedFrame("Welcome back, " + DizName);        
+    }
+    private void OnLoggedInAction()
+    {
+        UIController.TargetUIID = _TargetUIID;        
+    }
+    private void HideAuthedFrameAction()
+    {
+        AuthorizedFrame.gameObject.SetActive(false);        
+    }
+    private void ActivateAuthedFrame(string _text)
     {
         AuthorizedFrame.gameObject.SetActive(true);
         AuthorizedText.text = _text;
-        yield return new WaitForSeconds(ShowingAuthorizedFrameDuration);
-        AuthorizedFrame.gameObject.SetActive(false);
+        StartCoroutine(ShowEnumerator());
     }
-    private bool IsMailValid(string mail) => !string.IsNullOrEmpty(mail) && mail.Contains('@') && mail.Contains('.') && mail.Length >= 5;
-    private bool IsPassValid(string pass) => pass.Length >= 6;
+    IEnumerator ShowEnumerator()
+    {
+        yield return new WaitForSeconds(ShowingAuthorizedFrameDuration);
+        HideAuthedFrameAction();
+        yield return new WaitForSeconds(GameFrameActivationDelay);
+        OnLoggedInAction();
+    }
 }
