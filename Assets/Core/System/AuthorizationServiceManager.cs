@@ -1,8 +1,8 @@
 using System;
 using System.Collections;
-using System.Net.Security;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using System.Text;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -10,6 +10,11 @@ public class AuthorizationServiceManager : MonoBehaviour
 {
     [field:SerializeField]
     private string BASE_URL = "http://localhost:7000";
+    [field: SerializeField]
+    private string AUTHORIZE_SUFFIX = "/auth/telegram";
+    [field: SerializeField]
+    private string SAVE_SUFFIX = "/save-score";
+    static public List<GameplayData> Leaderboard;
     static public GameplayData currentData;
     static public AuthorizationServiceManager source;
     static public string displayNameRaw {get; private set;}
@@ -32,7 +37,10 @@ public class AuthorizationServiceManager : MonoBehaviour
 
         try
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
             StartCoroutine(AuthEnumerator());
+            StartCoroutine(GetLBEnumerator`());
+#endif
             displayNameRaw = GetUserNameRaw();
         }
         catch (System.Exception e)
@@ -41,7 +49,7 @@ public class AuthorizationServiceManager : MonoBehaviour
         }
     }
 
-    #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     private static extern string InitTelegram();
     [DllImport("__Internal")]
@@ -50,7 +58,7 @@ public class AuthorizationServiceManager : MonoBehaviour
     private static extern void SetupTelegram();
     [DllImport("__Internal")]
     private static extern void ExpandTelegram();
-    #endif
+#endif
     public bool TryConnectOnErrorActon(Action<string> action)
     {
         try
@@ -91,7 +99,17 @@ public class AuthorizationServiceManager : MonoBehaviour
         {
             return false;
         }
-        //StartCoroutine(SaveScoreEnumerator());
+        try
+        {
+            StartCoroutine(SaveEnumerator());
+        } catch (Exception e)
+        {
+            if (e.Message != null)
+            {
+                OnTelegramError(e.Message);
+                return false;
+            }
+        }
         return true;
     }
     private void OnTelegramError(string error)
@@ -101,21 +119,112 @@ public class AuthorizationServiceManager : MonoBehaviour
     }
     public string Init()
     {
-        #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL && !UNITY_EDITOR
             SetupTelegram();
             ExpandTelegram();
             return InitTelegram();
-        #else
+#else
             return "test_init_data";
-        #endif
+#endif
     }
     public string GetUserNameRaw()
     {
-        #if UNITY_WEBGL && !UNITY_EDITOR
+#if UNITY_WEBGL && !UNITY_EDITOR
             return GetTGUser();
-        #else
+#else
             return "{\"id\":123,\"first_name\":\"test\"}";
-        #endif        
+#endif
+    }
+    IEnumerator SaveEnumerator()
+    {
+        if (string.IsNullOrEmpty(TelegramInitData))
+        {
+            OnTelegramError("FAILED TO SAVE.");
+            yield break;
+        }
+
+        TelegramSaveScoreRequest saveScoreRequest = new TelegramSaveScoreRequest()
+        {
+            InitData = TelegramInitData,
+            score = currentData.score
+        };
+
+        string json = JsonUtility.ToJson(saveScoreRequest);
+        byte[] BodyRaw = Encoding.UTF8.GetBytes(json);
+
+        using UnityWebRequest reqest = new(BASE_URL + SAVE_SUFFIX, "POST");
+
+        reqest.uploadHandler = new UploadHandlerRaw(BodyRaw);
+        reqest.downloadHandler = new DownloadHandlerBuffer();
+        reqest.SetRequestHeader("Content-Type", "application/json");
+
+        yield return reqest.SendWebRequest();
+
+        bool IsError = reqest.result != UnityWebRequest.Result.Success;
+        if (IsError)
+        {
+            Debug.Log("Auth request error: " + reqest.error);
+            Debug.Log("Response: " + reqest.downloadHandler.text);
+            OnTelegramError("FAILED TO SAVE. ERRORED.");
+            yield break;
+        }
+
+        string responseJson = reqest.downloadHandler.text;
+
+        WebRequestData<GameplayData> response = JsonUtility.FromJson<WebRequestData<GameplayData>>(responseJson);
+
+        if (response == null)
+        {
+            Debug.Log("Auth request error: " + "Response is null.");
+            OnTelegramError("FAILED TO SAVE. RESPONSE NULL.");
+            yield break;
+        }
+
+        if (!response.success || response.body == null)
+        {
+            Debug.Log("Auth request error: " + "Response not successful.");
+            OnTelegramError("FAILED TO SAVE. MESSAGE: " + response.message);
+            yield break;
+        }
+    }
+    IEnumerator GetLBEnumerator()
+    {
+
+        using UnityWebRequest reqest = new(BASE_URL + "/get-leaderboard", "POST");
+
+        reqest.downloadHandler = new DownloadHandlerBuffer();
+        reqest.SetRequestHeader("Content-Type", "application/json");
+
+        yield return reqest.SendWebRequest();
+
+        bool IsError = reqest.result != UnityWebRequest.Result.Success;
+        if (IsError)
+        {
+            Debug.Log("Auth request error: " + reqest.error);
+            Debug.Log("Response: " + reqest.downloadHandler.text);
+            OnTelegramError("FAILED TO SETUP. ERRORED.");
+            yield break;
+        }
+
+        string responseJson = reqest.downloadHandler.text;
+
+        WebRequestData<List<GameplayData>> response = JsonUtility.FromJson<WebRequestData<List<GameplayData>>>(responseJson);
+
+        if (response == null)
+        {
+            Debug.Log("Auth request error: " + "Response is null.");
+            OnTelegramError("FAILED TO SETUP. RESPONSE NULL.");
+            yield break;
+        }
+
+        if (!response.success || response.body == null)
+        {
+            Debug.Log("Auth request error: " + "Response not successful.");
+            OnTelegramError("FAILED TO SETUP. MESSAGE: " + response.message);
+            yield break;
+        }
+
+        Leaderboard = response.body;
     }
     IEnumerator AuthEnumerator()
     {
@@ -135,7 +244,7 @@ public class AuthorizationServiceManager : MonoBehaviour
         string json = JsonUtility.ToJson(requestData);
         byte[] BodyRaw = Encoding.UTF8.GetBytes(json);
 
-        using UnityWebRequest reqest = new(BASE_URL, "POST");
+        using UnityWebRequest reqest = new(BASE_URL+AUTHORIZE_SUFFIX, "POST");
 
         reqest.uploadHandler = new UploadHandlerRaw(BodyRaw);
         reqest.downloadHandler = new DownloadHandlerBuffer();
@@ -176,6 +285,7 @@ public class AuthorizationServiceManager : MonoBehaviour
         };
 
         OnLoadedActions?.Invoke();
+        currentData = response.body;
         IsLoaded = true;
     }
     /*

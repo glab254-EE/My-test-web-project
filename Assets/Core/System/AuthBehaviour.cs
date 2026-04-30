@@ -50,6 +50,10 @@ public class AuthBehaviour : MonoBehaviour
         //ProceedButton.onClick.AddListener(OnButtonPress);
         //ToggleRegisterButton.onClick.AddListener(OnRegisterPress);
     }
+    void OnApplicationQuit()
+    {
+        AuthorizationServiceManager.source.TrySave();
+    }
     /*
     void OnRegisterPress()
     {

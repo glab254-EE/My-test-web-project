@@ -14,18 +14,15 @@ public class GameplayController : MonoBehaviour
     [SerializeField]
     private bool NeedToLogin = false;
     private bool Initialized = false;
-    private GameplayData data;
     private bool Busy = false;
     private float RemainingSavingTime;
     void Initialize()
     {
         Busy = true;
-        data = new();
         RemainingSavingTime = SaveInterval;
         Initialized = true;
         Busy = false;
         UpdateLabel();
-        Debug.Log("Readdy!");
     }
     void Update()
     {
@@ -52,14 +49,14 @@ public class GameplayController : MonoBehaviour
     public void OnClick()
     {
         if (!Initialized) return;
-        data.score += ClickIncrement;
+        AuthorizationServiceManager.currentData.score += ClickIncrement;
         UpdateLabel();
     }
     private void UpdateLabel()
     {
         if (scoreLabel != null)
         {
-            scoreLabel.text = "Score: "+data.score.ToString();
+            scoreLabel.text = "Score: "+ AuthorizationServiceManager.currentData.score.ToString();
         }
     }
     private void SaveData()

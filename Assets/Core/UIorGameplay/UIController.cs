@@ -12,8 +12,7 @@ public class UIController : MonoBehaviour
     }
     [field:SerializeField]
     private List<UIStateOption> UIStateToObjects = new();
-    [field:SerializeField]
-    internal int TargetUIID = 0;
+    public int TargetUIID = 0;
     private int _shownUIID = 0;
     void Update()
     {
@@ -34,5 +33,9 @@ public class UIController : MonoBehaviour
             }
         }
         _shownUIID = TargetUIID;
+    }
+    public void SetTargetUiID(int uiID)
+    {
+        TargetUIID = uiID;
     }
 }

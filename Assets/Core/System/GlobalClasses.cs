@@ -8,7 +8,7 @@ public class TelegramAuthRequestData
 [Serializable]
 public class TelegramSaveScoreRequest
 {
-    public string initData;
+    public string InitData;
     public double score;
 }
 [Serializable]
@@ -16,7 +16,7 @@ public class GameplayData
 {
     public long teleID;
     public string Pname;
-    public double score = 0;
+    public double score;
 }
 [Serializable]
 public class WebRequestData<T>
